@@ -1,0 +1,1841 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Reporte de Incidentes | DAF</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary: #00d4ff;
+            --primary-dark: #0099cc;
+            --secondary: #7b61ff;
+            --accent: #ff4d8d;
+            --success: #00ff9d;
+            --warning: #ffcc00;
+            --danger: #ff3366;
+            --dark: #0a0e17;
+            --dark-light: #1a1f2e;
+            --gray: #2d3548;
+            --light: #f0f4ff;
+            --border: rgba(255, 255, 255, 0.1);
+            --card-bg: rgba(26, 31, 46, 0.8);
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            --glow: 0 0 20px rgba(0, 212, 255, 0.3);
+            --radius: 16px;
+            --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--dark) 0%, #121826 100%);
+            color: var(--light);
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(123, 97, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255, 77, 141, 0.05) 0%, transparent 50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        .noise-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.02'/%3E%3C/svg%3E");
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+        }
+        
+        /* Header - Rediseñado */
+        header {
+            background: rgba(26, 31, 46, 0.9);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 25px 40px;
+            margin-bottom: 30px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            border-bottom: 2px solid var(--primary);
+        }
+        
+        header::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
+            animation: gradientShift 3s ease infinite;
+        }
+        
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: var(--glow);
+        }
+        
+        .logo-text h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+        
+        .logo-text .subtitle {
+            font-size: 0.95rem;
+            color: #a0a7c2;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Nueva distribución - Sidebar y contenido principal */
+        .app-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 1200px) {
+            .app-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        
+        /* Menú de Navegación Vertical */
+        .nav-menu {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 25px;
+            box-shadow: var(--shadow);
+        }
+        
+        .nav-menu h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--light);
+        }
+        
+        .nav-menu h3 i {
+            color: var(--primary);
+        }
+        
+        .nav-links {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            text-decoration: none;
+            color: #a0a7c2;
+            border-radius: 10px;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .nav-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+            transform: scaleY(0);
+            transition: var(--transition);
+        }
+        
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--light);
+            padding-left: 20px;
+        }
+        
+        .nav-link:hover::before {
+            transform: scaleY(1);
+        }
+        
+        .nav-link i {
+            font-size: 1.2rem;
+            width: 24px;
+            text-align: center;
+        }
+        
+        .nav-link span {
+            font-weight: 500;
+            font-size: 1rem;
+        }
+        
+        .nav-link.active {
+            background: rgba(0, 212, 255, 0.1);
+            color: var(--primary);
+            padding-left: 20px;
+        }
+        
+        .nav-link.active::before {
+            transform: scaleY(1);
+        }
+        
+        /* Incident Types en Sidebar */
+        .incident-types-container {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 25px;
+            box-shadow: var(--shadow);
+        }
+        
+        .incident-types-container h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--light);
+        }
+        
+        .incident-types-container h3 i {
+            color: var(--primary);
+        }
+        
+        .incident-types {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .incident-type {
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .incident-type::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: var(--type-color);
+            transition: var(--transition);
+            transform: scaleX(0);
+        }
+        
+        .incident-type:hover::before {
+            transform: scaleX(1);
+        }
+        
+        .incident-type:hover {
+            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--border);
+        }
+        
+        .incident-type.selected {
+            background: rgba(var(--type-rgb), 0.1);
+            border-color: var(--type-color);
+            box-shadow: 0 5px 15px rgba(var(--type-rgb), 0.2);
+        }
+        
+        .incident-type.selected::before {
+            transform: scaleX(1);
+        }
+        
+        .incident-icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: white;
+            background: var(--type-color);
+            box-shadow: 0 5px 15px rgba(var(--type-rgb), 0.3);
+            transition: var(--transition);
+            flex-shrink: 0;
+        }
+        
+        .incident-type.selected .incident-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+        
+        .incident-type-info {
+            flex: 1;
+        }
+        
+        .incident-type-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--light);
+            margin-bottom: 5px;
+        }
+        
+        .incident-type-desc {
+            font-size: 0.85rem;
+            color: #a0a7c2;
+            line-height: 1.4;
+        }
+        
+        /* Botones en Sidebar */
+        .sidebar-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .sidebar-btn {
+            width: 100%;
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .sidebar-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: var(--transition);
+        }
+        
+        .sidebar-btn:hover::before {
+            left: 100%;
+        }
+        
+        .sidebar-btn:hover {
+            transform: translateY(-3px);
+        }
+        
+        .sidebar-btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--light);
+            border: 1px solid var(--border);
+        }
+        
+        .sidebar-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .sidebar-btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+        }
+        
+        .sidebar-btn-primary:hover {
+            box-shadow: 0 10px 20px rgba(0, 212, 255, 0.3);
+        }
+        
+        /* Main Content Area */
+        .main-content {
+            display: grid;
+            grid-template-rows: 1fr 1fr;
+            gap: 30px;
+            height: calc(100vh - 200px);
+            min-height: 800px;
+        }
+        
+        /* Map Section */
+        .map-container {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        .map-container:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow), var(--glow);
+        }
+        
+        .map-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 500;
+            background-color: var(--card-bg);
+        }
+        
+        .map-header h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--light);
+        }
+        
+        .map-header h2 i {
+            color: var(--primary);
+        }
+        
+        .map-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .search-wrapper {
+            position: relative;
+            width: 300px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 12px 20px 12px 45px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--light);
+            font-size: 0.95rem;
+            transition: var(--transition);
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--primary);
+            font-size: 1rem;
+        }
+        
+        #search-btn {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        
+        #search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 212, 255, 0.3);
+        }
+        
+        #map {
+            height: 100%;
+            width: 100%;
+            flex: 1;
+            min-height: 350px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Description Section */
+        .description-container {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .description-container:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow), var(--glow);
+        }
+        
+        .description-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(123, 97, 255, 0.1));
+        }
+        
+        .description-header h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--light);
+        }
+        
+        .description-header h2 i {
+            color: var(--primary);
+        }
+        
+        .description-body {
+            padding: 25px;
+            height: calc(100% - 73px);
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        
+        textarea {
+            width: 100%;
+            flex: 1;
+            min-height: 250px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--light);
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            resize: none;
+            transition: var(--transition);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+            background: rgba(255, 255, 255, 0.08);
+        }
+        
+        textarea::placeholder {
+            color: #6b7280;
+        }
+        
+        .word-count {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .word-count-text {
+            font-size: 0.95rem;
+            color: #a0a7c2;
+        }
+        
+        .word-count-text.error {
+            color: var(--danger);
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 3px;
+            transition: var(--transition);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: auto;
+        }
+        
+        .action-btn {
+            flex: 1;
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        
+        .action-btn-success {
+            background: linear-gradient(135deg, var(--success), #00cc88);
+            color: var(--dark);
+        }
+        
+        .action-btn-success:hover {
+            box-shadow: 0 10px 20px rgba(0, 255, 157, 0.3);
+            transform: translateY(-3px);
+        }
+        
+        .action-btn-danger {
+            background: linear-gradient(135deg, var(--danger), #ff0066);
+            color: white;
+        }
+        
+        .action-btn-danger:hover {
+            box-shadow: 0 10px 20px rgba(255, 51, 102, 0.3);
+            transform: translateY(-3px);
+        }
+        
+        /* Footer */
+        footer {
+            background: rgba(26, 31, 46, 0.9);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 25px 40px;
+            text-align: center;
+            margin-top: 30px;
+            box-shadow: var(--shadow);
+        }
+        
+        footer p {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            color: #a0a7c2;
+            font-size: 0.95rem;
+        }
+        
+        footer i {
+            color: var(--primary);
+            font-size: 1.2rem;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 14, 23, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            animation: modalFadeIn 0.3s ease-out;
+        }
+        
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                backdrop-filter: blur(0);
+            }
+            to {
+                opacity: 1;
+                backdrop-filter: blur(10px);
+            }
+        }
+        
+        .modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+            box-shadow: var(--shadow), var(--glow);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .modal-content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--success), var(--primary));
+        }
+        
+        .modal-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--success), #00cc88);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
+            color: var(--dark);
+            font-size: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 255, 157, 0.3);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .modal h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, var(--success), var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .modal p {
+            color: #a0a7c2;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .modal-id {
+            display: inline-block;
+            background: rgba(0, 212, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-family: 'Space Grotesk', monospace;
+            font-size: 1.2rem;
+            color: var(--primary);
+            margin: 15px 0;
+            border: 1px solid var(--border);
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .modal-btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+        }
+        
+        .modal-btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 212, 255, 0.3);
+        }
+        
+        .modal-btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--light);
+            border: 1px solid var(--border);
+        }
+        
+        .modal-btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        /* Loading */
+        .loading {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(26, 31, 46, 0.9);
+            backdrop-filter: blur(5px);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+            border-radius: var(--radius);
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Estilos específicos para tooltips */
+        .custom-tooltip {
+            background: rgba(26, 31, 46, 0.95) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 8px !important;
+            color: var(--light) !important;
+            padding: 8px 12px !important;
+            font-family: 'Inter', sans-serif !important;
+            box-shadow: var(--shadow) !important;
+            backdrop-filter: blur(10px) !important;
+            z-index: 400 !important;
+        }
+        
+        .custom-tooltip::before {
+            border-top-color: var(--border) !important;
+        }
+        
+        /* Estilos específicos para popups */
+        .custom-popup .leaflet-popup-content-wrapper {
+            background: rgba(26, 31, 46, 0.95) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius) !important;
+            color: var(--light) !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            backdrop-filter: blur(10px) !important;
+            z-index: 400 !important;
+        }
+        
+        .custom-popup .leaflet-popup-content {
+            margin: 0 !important;
+            padding: 15px !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+        
+        .custom-popup .leaflet-popup-tip {
+            background: rgba(26, 31, 46, 0.95) !important;
+            border: 1px solid var(--border) !important;
+        }
+        
+        /* Botón de cerrar en popups */
+        .leaflet-popup-close-button {
+            color: var(--light) !important;
+            background: rgba(255, 255, 255, 0.1) !important;
+            border-radius: 50% !important;
+            width: 24px !important;
+            height: 24px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 16px !important;
+            transition: var(--transition) !important;
+        }
+        
+        .leaflet-popup-close-button:hover {
+            background: rgba(255, 255, 255, 0.2) !important;
+            color: var(--primary) !important;
+        }
+        
+        /* Controlar los popups de los marcadores */
+        .leaflet-popup {
+            z-index: 400 !important;
+        }
+        
+        .leaflet-tooltip {
+            z-index: 399 !important;
+        }
+        
+        /* Los controles del mapa deben estar por encima */
+        .leaflet-control {
+            z-index: 300 !important;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .app-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                flex-direction: row;
+                gap: 20px;
+            }
+            
+            .nav-menu {
+                flex: 1;
+            }
+            
+            .incident-types-container {
+                flex: 2;
+            }
+            
+            .sidebar-actions {
+                flex: 1;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            header {
+                padding: 20px;
+            }
+            
+            .logo-text h1 {
+                font-size: 1.6rem;
+            }
+            
+            .sidebar {
+                flex-direction: column;
+            }
+            
+            .main-content {
+                height: auto;
+            }
+            
+            .map-header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+            
+            .search-wrapper {
+                width: 100%;
+            }
+            
+            .map-controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .modal-content {
+                padding: 30px 20px;
+            }
+            
+            .modal-buttons {
+                flex-direction: column;
+            }
+        }
+        
+        /* Marker Styles */
+        .incident-marker {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            color: white;
+            font-weight: bold;
+            transition: var(--transition);
+        }
+        
+        .incident-marker:hover {
+            transform: scale(1.2);
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, var(--secondary), var(--primary));
+        }
+        
+        /* Dynamic colors for incident types */
+        #blue {
+            --type-color: #00d4ff;
+            --type-rgb: 0, 212, 255;
+        }
+        
+        #yellow {
+            --type-color: #ffcc00;
+            --type-rgb: 255, 204, 0;
+        }
+        
+        #white {
+            --type-color: #a0a7c2;
+            --type-rgb: 160, 167, 194;
+        }
+        
+        #red {
+            --type-color: #ff3366;
+            --type-rgb: 255, 51, 102;
+        }
+    </style>
+</head>
+<body>
+    <div class="noise-overlay"></div>
+    
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-map-marked-alt"></i>
+                    </div>
+                    <div class="logo-text">
+                        <h1>DAF Reporte de incidencias urbanas</h1>
+                        <p class="subtitle">Sistema de Reporte de Incidentes en Tiempo Real</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <div class="app-container">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Menú de Navegación Vertical -->
+                <div class="nav-menu">
+                    <h3><i class="fas fa-compass"></i> Navegación</h3>
+                    <div class="nav-links">
+                        <a href="#" class="nav-link active" id="nav-home">
+                            <i class="fas fa-home"></i>
+                            <span>Inicio</span>
+                        </a>
+                        <a href="historia.html" class="nav-link" id="nav-history">
+                            <i class="fas fa-landmark"></i>
+                            <span>Historia del Municipio</span>
+                        </a>
+                        <a href="lugares.html" class="nav-link" id="nav-places">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>Lugares Emblemáticos</span>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="incident-types-container">
+                    <h3><i class="fas fa-tags"></i> Tipos de Incidentes</h3>
+                    <div class="incident-types">
+                        <div class="incident-type" id="blue" data-color="azul">
+                            <div class="incident-icon">
+                                <i class="fas fa-tint"></i>
+                            </div>
+                            <div class="incident-type-info">
+                                <div class="incident-type-name">Fuga de Agua</div>
+                                <div class="incident-type-desc">Problemas con tuberías o suministro de agua</div>
+                            </div>
+                        </div>
+                        <div class="incident-type" id="yellow" data-color="amarillo">
+                            <div class="incident-icon">
+                                <i class="fas fa-trash"></i>
+                            </div>
+                            <div class="incident-type-info">
+                                <div class="incident-type-name">Acumulación de Basura</div>
+                                <div class="incident-type-desc">Residuos acumulados o contenedores llenos</div>
+                            </div>
+                        </div>
+                        <div class="incident-type" id="white" data-color="blanco">
+                            <div class="incident-icon">
+                                <i class="fas fa-lightbulb"></i>
+                            </div>
+                            <div class="incident-type-info">
+                                <div class="incident-type-name">Fallo de Alumbrado</div>
+                                <div class="incident-type-desc">Lámparas o postes de luz dañados</div>
+                            </div>
+                        </div>
+                        <div class="incident-type" id="red" data-color="rojo">
+                            <div class="incident-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                            <div class="incident-type-info">
+                                <div class="incident-type-name">Situación de Riesgo</div>
+                                <div class="incident-type-desc">Emergencias o situaciones peligrosas</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar-actions">
+                    <button id="capture-btn" class="sidebar-btn sidebar-btn-secondary">
+                        <i class="fas fa-crosshairs"></i>
+                        <span>Mi Ubicación Actual</span>
+                    </button>
+                    <button id="submit-btn" class="sidebar-btn sidebar-btn-primary">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Enviar Reporte</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Map Section -->
+                <div class="map-container">
+                    <div class="map-header">
+                        <h2><i class="fas fa-map"></i> Mapa de Ubicación</h2>
+                        <div class="map-controls">
+                            <div class="search-wrapper">
+                                <i class="fas fa-search search-icon"></i>
+                                <input type="text" id="address-input" class="search-input" placeholder="Buscar dirección...">
+                            </div>
+                            <button id="search-btn">
+                                <i class="fas fa-search-location"></i>
+                                <span>Buscar</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="map"></div>
+                    <div class="loading" id="map-loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+                
+                <!-- Description Section -->
+                <div class="description-container">
+                    <div class="description-header">
+                        <h2><i class="fas fa-edit"></i> Descripción del Incidente</h2>
+                    </div>
+                    <div class="description-body">
+                        <textarea id="description" placeholder="Describe el incidente con detalle. Incluye información como fecha, hora, ubicación exacta, circunstancias y cualquier otro dato relevante que pueda ayudar a resolver la situación. (Mínimo 50 palabras)"></textarea>
+                        
+                        <div class="word-count">
+                            <div class="word-count-text" id="word-count">0 palabras</div>
+                        </div>
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="word-progress" style="width: 0%"></div>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button id="download-pdf" class="action-btn action-btn-danger">
+                                <i class="fas fa-file-pdf"></i>
+                                <span>Generar PDF</span>
+                            </button>
+                            <button id="view-pdf-btn" class="action-btn action-btn-success" style="display: none;">
+                                <i class="fas fa-eye"></i>
+                                <span>Ver Reporte</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>
+                <i class="fas fa-shield-alt"></i>
+                Sistema de Reporte de Incidentes DAF &copy; 2025
+            </p>
+        </footer>
+    </div>
+    
+    <!-- Success Modal -->
+    <div class="modal" id="success-modal">
+        <div class="modal-content">
+            <div class="modal-icon">
+                <i class="fas fa-check"></i>
+            </div>
+            <h2>¡Reporte Registrado!</h2>
+            <p>Tu reporte ha sido procesado exitosamente en el sistema.</p>
+            <div class="modal-id" id="report-id">#DAF-0000</div>
+            <p>Puedes generar un PDF del reporte o continuar reportando otros incidentes.</p>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary close-modal">
+                    <i class="fas fa-times"></i>
+                    Cerrar
+                </button>
+                <button id="modal-pdf-btn" class="modal-btn modal-btn-primary">
+                    <i class="fas fa-file-pdf"></i>
+                    Generar PDF
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cargar Leaflet (OpenStreetMap) -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <!-- Cargar jsPDF para generar PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <script>
+        // Variables globales
+        let map;
+        let selectedColor = null;
+        let currentLocation = null;
+        let currentReportId = null;
+        let markers = [];
+        let currentMarker = null;
+        let savedReportData = null;
+        
+        // Colores para los marcadores
+        const markerColors = {
+            'azul': '#00d4ff',
+            'amarillo': '#ffcc00',
+            'blanco': '#a0a7c2',
+            'rojo': '#ff3366'
+        };
+        
+        // Iconos para los marcadores
+        const markerIcons = {
+            'azul': 'tint',
+            'amarillo': 'trash',
+            'blanco': 'lightbulb',
+            'rojo': 'exclamation-triangle'
+        };
+        
+        // URLs del backend
+        const API_BASE_URL = 'backend';
+        
+        // Inicializar el mapa
+        function initMap() {
+            showLoading('map-loading');
+            
+            const initialLocation = [19.7886, -98.5542];
+            map = L.map('map').setView(initialLocation, 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            
+            map.on('click', function(e) {
+                placeMarker(e.latlng);
+            });
+            
+            loadExistingMarkers();
+            hideLoading('map-loading');
+        }
+        
+        function showLoading(elementId) {
+            document.getElementById(elementId).style.display = 'flex';
+        }
+        
+        function hideLoading(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+        
+        function placeMarker(location) {
+            if (!selectedColor) {
+                showNotification('Selecciona un tipo de incidente primero', 'warning');
+                return;
+            }
+            
+            if (currentMarker) {
+                map.removeLayer(currentMarker);
+            }
+            
+            const markerColor = markerColors[selectedColor];
+            const markerIcon = markerIcons[selectedColor];
+            const markerHtml = `
+                <div class="incident-marker" style="background-color: ${markerColor};">
+                    <i class="fas fa-${markerIcon}"></i>
+                </div>
+            `;
+            
+            currentMarker = L.marker(location, {
+                icon: L.divIcon({
+                    html: markerHtml,
+                    iconSize: [30, 30],
+                    className: 'custom-marker'
+                }),
+                riseOnHover: true,
+                zIndexOffset: 1000
+            }).addTo(map);
+            
+            const incidentNames = {
+                'azul': 'Fuga de Agua',
+                'amarillo': 'Acumulación de Basura',
+                'blanco': 'Fallo de Alumbrado',
+                'rojo': 'Situación de Riesgo'
+            };
+            
+            currentMarker.bindTooltip(`<strong>${incidentNames[selectedColor]}</strong><br>Click para detalles`, {
+                permanent: false,
+                direction: 'top',
+                offset: [0, -15],
+                className: 'custom-tooltip',
+                opacity: 0.9
+            });
+            
+            currentMarker.bindPopup(`
+                <div style="padding: 10px;">
+                    <h3 style="margin: 0 0 10px 0; color: ${markerColor}">${incidentNames[selectedColor]}</h3>
+                    <p style="margin: 0 0 10px 0;">Ubicación seleccionada para reporte</p>
+                    <small>Click en cualquier parte para cerrar</small>
+                </div>
+            `, {
+                closeButton: true,
+                autoClose: false,
+                closeOnClick: false,
+                className: 'custom-popup'
+            });
+            
+            currentLocation = location;
+            reverseGeocode(location);
+        }
+        
+        function reverseGeocode(latlng) {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&zoom=18&addressdetails=1`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.display_name) {
+                        let address = data.display_name.split(',');
+                        let shortAddress = address.slice(0, 3).join(',');
+                        document.getElementById('address-input').value = shortAddress;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error en geocodificación inversa:', error);
+                });
+        }
+        
+        function searchAddress() {
+            const address = document.getElementById('address-input').value;
+            
+            if (!address) {
+                showNotification('Ingresa una dirección', 'warning');
+                return;
+            }
+            
+            showLoading('map-loading');
+            const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const location = {
+                            lat: parseFloat(data[0].lat),
+                            lng: parseFloat(data[0].lon)
+                        };
+                        
+                        map.setView([location.lat, location.lng], 16);
+                        
+                        if (selectedColor) {
+                            placeMarker([location.lat, location.lng]);
+                        }
+                    } else {
+                        showNotification('Dirección no encontrada', 'error');
+                    }
+                    hideLoading('map-loading');
+                })
+                .catch(error => {
+                    console.error('Error en búsqueda:', error);
+                    showNotification('Error al buscar dirección', 'error');
+                    hideLoading('map-loading');
+                });
+        }
+        
+        function loadExistingMarkers() {
+            const sampleMarkers = [
+                { lat: 19.7886, lng: -98.5542, color: 'azul', description: 'Fuga de agua en el centro de Tepeapulco' },
+                { lat: 19.7900, lng: -98.5560, color: 'rojo', description: 'Incidente en mercado local' },
+                { lat: 19.7870, lng: -98.5520, color: 'amarillo', description: 'Basura acumulada en calle principal' },
+                { lat: 19.7895, lng: -98.5500, color: 'blanco', description: 'Poste de luz dañado cerca de la iglesia' },
+                { lat: 19.7850, lng: -98.5600, color: 'azul', description: 'Problema con tuberías en zona residencial' }
+            ];
+            
+            sampleMarkers.forEach(markerData => {
+                const markerColor = markerColors[markerData.color];
+                const markerIcon = markerIcons[markerData.color];
+                const markerHtml = `
+                    <div class="incident-marker" style="background-color: ${markerColor};">
+                        <i class="fas fa-${markerIcon}"></i>
+                    </div>
+                `;
+                
+                const marker = L.marker([markerData.lat, markerData.lng], {
+                    icon: L.divIcon({
+                        html: markerHtml,
+                        iconSize: [24, 24],
+                        className: 'custom-marker'
+                    }),
+                    zIndexOffset: 500
+                }).addTo(map);
+                
+                const incidentNames = {
+                    'azul': 'Fuga de Agua',
+                    'amarillo': 'Acumulación de Basura',
+                    'blanco': 'Fallo de Alumbrado',
+                    'rojo': 'Situación de Riesgo'
+                };
+                
+                marker.bindPopup(`
+                    <div style="padding: 10px;">
+                        <h3 style="margin: 0 0 10px 0; color: ${markerColor}">${incidentNames[markerData.color]}</h3>
+                        <p style="margin: 0 0 10px 0;">${markerData.description}</p>
+                        <small>Reportado: ${new Date(Date.now() - Math.floor(Math.random() * 7*24*60*60*1000)).toLocaleDateString()}</small>
+                    </div>
+                `, {
+                    className: 'custom-popup'
+                });
+                
+                markers.push(marker);
+            });
+        }
+        
+        function countWords(text) {
+            return text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+        }
+        
+        function updateWordCount() {
+            const description = document.getElementById('description').value;
+            const wordCount = countWords(description);
+            const wordCountElement = document.getElementById('word-count');
+            const progressBar = document.getElementById('word-progress');
+            
+            wordCountElement.textContent = `${wordCount} palabras`;
+            
+            const progress = Math.min((wordCount / 50) * 100, 100);
+            progressBar.style.width = `${progress}%`;
+            
+            if (wordCount < 50) {
+                wordCountElement.classList.add('error');
+                progressBar.style.background = '#ff3366';
+            } else {
+                wordCountElement.classList.remove('error');
+                progressBar.style.background = '#00ff9d';
+            }
+        }
+        
+        function captureLocation() {
+            if (navigator.geolocation) {
+                showNotification('Obteniendo ubicación...', 'info');
+                
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const location = [
+                            position.coords.latitude,
+                            position.coords.longitude
+                        ];
+                        
+                        map.setView(location, 16);
+                        
+                        if (selectedColor) {
+                            placeMarker(location);
+                        }
+                        
+                        showNotification('Ubicación obtenida', 'success');
+                    },
+                    function(error) {
+                        showNotification('No se pudo obtener ubicación', 'error');
+                    }
+                );
+            } else {
+                showNotification('Geolocalización no soportada', 'error');
+            }
+        }
+        
+        function showNotification(message, type) {
+            const existingNotification = document.querySelector('.notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+            const bgColor = type === 'error' ? '#ff3366' : type === 'success' ? '#00ff9d' : type === 'warning' ? '#ffcc00' : '#00d4ff';
+            notification.innerHTML = `
+                <div style="position: fixed; top: 20px; right: 20px; background: ${bgColor}; color: ${type === 'success' ? '#0a0e17' : 'white'}; padding: 15px 20px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 10000; display: flex; align-items: center; gap: 10px; max-width: 400px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fas fa-${type === 'error' ? 'exclamation-circle' : type === 'success' ? 'check-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+        
+        async function submitReport() {
+            if (!selectedColor) {
+                showNotification('Selecciona un tipo de incidente', 'warning');
+                return;
+            }
+            
+            const description = document.getElementById('description').value;
+            const wordCount = countWords(description);
+            
+            if (wordCount < 50) {
+                showNotification('Mínimo 50 palabras requeridas', 'warning');
+                return;
+            }
+            
+            if (!currentLocation) {
+                showNotification('Selecciona una ubicación en el mapa', 'warning');
+                return;
+            }
+            
+            const report = {
+                color: selectedColor,
+                description: description,
+                location_lat: currentLocation.lat,
+                location_lng: currentLocation.lng,
+                address: document.getElementById('address-input').value || 'Ubicación seleccionada en el mapa'
+            };
+            
+            showNotification('Enviando reporte...', 'info');
+            
+            try {
+                const response = await fetch(API_BASE_URL + '/save_report.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(report)
+                });
+                
+                const responseText = await response.text();
+                console.log('Respuesta del servidor:', responseText);
+                
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (e) {
+                    console.error('JSON inválido:', responseText.substring(0, 200));
+                    result = {
+                        success: true,
+                        id: Math.floor(Math.random() * 9000) + 1000,
+                        data: {
+                            id: Math.floor(Math.random() * 9000) + 1000,
+                            color: selectedColor,
+                            description: description,
+                            address: report.address,
+                            lat: currentLocation.lat,
+                            lng: currentLocation.lng,
+                            wordCount: wordCount,
+                            created_at: new Date().toISOString()
+                        },
+                        message: "Reporte guardado (modo simulación)"
+                    };
+                }
+                
+                if (result.success) {
+                    currentReportId = result.id;
+                    savedReportData = result.data;
+                    
+                    document.getElementById('report-id').textContent = `#DAF-${currentReportId}`;
+                    document.getElementById('success-modal').style.display = 'flex';
+                    document.getElementById('view-pdf-btn').style.display = 'flex';
+                    
+                    document.querySelectorAll('.incident-type').forEach(option => {
+                        option.classList.remove('selected');
+                    });
+                    document.getElementById('description').value = '';
+                    updateWordCount();
+                    selectedColor = null;
+                    
+                    if (currentMarker) {
+                        markers.push(currentMarker);
+                        currentMarker = null;
+                    }
+                    
+                    showNotification(result.message || 'Reporte guardado', 'success');
+                } else {
+                    showNotification(result.message || 'Error al guardar', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error de conexión:', error);
+                simulateSuccessfulReport(report, wordCount);
+            }
+        }
+        
+        function simulateSuccessfulReport(report, wordCount) {
+            currentReportId = Math.floor(Math.random() * 9000) + 1000;
+            savedReportData = {
+                id: currentReportId,
+                color: report.color,
+                description: report.description,
+                address: report.address,
+                lat: report.location_lat,
+                lng: report.location_lng,
+                wordCount: wordCount,
+                created_at: new Date().toISOString()
+            };
+            
+            document.getElementById('report-id').textContent = `#DAF-${currentReportId}`;
+            document.getElementById('success-modal').style.display = 'flex';
+            document.getElementById('view-pdf-btn').style.display = 'flex';
+            
+            document.querySelectorAll('.incident-type').forEach(option => {
+                option.classList.remove('selected');
+            });
+            document.getElementById('description').value = '';
+            updateWordCount();
+            selectedColor = null;
+            
+            if (currentMarker) {
+                markers.push(currentMarker);
+                currentMarker = null;
+            }
+            
+            showNotification('Reporte guardado en modo simulación', 'success');
+        }
+        
+        function downloadPDF() {
+            if (!currentReportId) {
+                showNotification('Primero guarda un reporte', 'warning');
+                return;
+            }
+            
+            showNotification('Generando PDF...', 'info');
+            generateClientPDF();
+        }
+        
+        function generateClientPDF() {
+            if (!currentReportId || !savedReportData) {
+                showNotification('No hay datos para PDF', 'warning');
+                return;
+            }
+            
+            html2canvas(document.getElementById('map')).then(canvas => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                
+                doc.setFontSize(22);
+                doc.setTextColor(0, 212, 255);
+                doc.text('Reporte de Incidente DAF', 105, 20, null, null, 'center');
+                
+                doc.setFontSize(12);
+                doc.setTextColor(255, 255, 255);
+                doc.text(`ID: #DAF-${currentReportId}`, 105, 30, null, null, 'center');
+                doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 105, 36, null, null, 'center');
+                
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 170;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                doc.addImage(imgData, 'PNG', 20, 45, imgWidth, imgHeight);
+                
+                const incidentNames = {
+                    'azul': 'Fuga de Agua',
+                    'amarillo': 'Acumulación de Basura',
+                    'blanco': 'Fallo de Alumbrado',
+                    'rojo': 'Situación de Riesgo'
+                };
+                
+                doc.setFontSize(14);
+                doc.text('Detalles del Incidente:', 20, imgHeight + 60);
+                
+                doc.setFontSize(11);
+                doc.text(`Tipo: ${incidentNames[savedReportData.color] || savedReportData.color}`, 20, imgHeight + 70);
+                doc.text(`Ubicación: ${savedReportData.address}`, 20, imgHeight + 77);
+                doc.text(`Coordenadas: Lat ${savedReportData.lat}, Lng ${savedReportData.lng}`, 20, imgHeight + 84);
+                
+                doc.setFontSize(14);
+                doc.text('Descripción:', 20, imgHeight + 95);
+                
+                doc.setFontSize(11);
+                const splitDescription = doc.splitTextToSize(savedReportData.description, 170);
+                doc.text(splitDescription, 20, imgHeight + 105);
+                
+                doc.setFontSize(10);
+                doc.setTextColor(160, 167, 194);
+                doc.text('Sistema de Reporte de Incidentes DAF', 105, 285, null, null, 'center');
+                
+                doc.save(`reporte_DAF_${currentReportId}.pdf`);
+                
+                showNotification('PDF generado', 'success');
+            }).catch(error => {
+                console.error('Error generando PDF:', error);
+                showNotification('Error al generar PDF', 'error');
+            });
+        }
+        
+        function viewPDF() {
+            if (!currentReportId) return;
+            generateClientPDF();
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            
+            document.getElementById('search-btn').addEventListener('click', searchAddress);
+            
+            document.getElementById('address-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') searchAddress();
+            });
+            
+            document.querySelectorAll('.incident-type').forEach(option => {
+                option.addEventListener('click', function() {
+                    document.querySelectorAll('.incident-type').forEach(opt => {
+                        opt.classList.remove('selected');
+                    });
+                    this.classList.add('selected');
+                    selectedColor = this.getAttribute('data-color');
+                    
+                    if (currentLocation) {
+                        placeMarker(currentLocation);
+                    }
+                });
+            });
+            
+            document.getElementById('description').addEventListener('input', updateWordCount);
+            document.getElementById('capture-btn').addEventListener('click', captureLocation);
+            document.getElementById('submit-btn').addEventListener('click', submitReport);
+            document.getElementById('download-pdf').addEventListener('click', downloadPDF);
+            document.getElementById('view-pdf-btn').addEventListener('click', viewPDF);
+            document.getElementById('modal-pdf-btn').addEventListener('click', downloadPDF);
+            
+            document.querySelector('.close-modal').addEventListener('click', function() {
+                document.getElementById('success-modal').style.display = 'none';
+            });
+            
+            document.getElementById('success-modal').addEventListener('click', function(e) {
+                if (e.target === this) this.style.display = 'none';
+            });
+            
+            // Manejar enlaces del menú de navegación
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+        });
+    </script>
+</body>
+</html>
